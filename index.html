@@ -698,6 +698,7 @@ function renderHome(){
         <button class="chip" onclick="startStarred()"><span class="dot" style="background:var(--hi)"></span>已收藏<span class="cnt">${star.length}</span></button>
         <button class="chip" onclick="startAll()"><span class="dot" style="background:var(--brand)"></span>全部題目<span class="cnt">${QUESTIONS.length}</span></button>
         <button class="chip" onclick="openCombinedS1()"><span class="dot" style="background:var(--s1)"></span>科目一綜合抽考<span class="cnt">50</span></button>
+        <button class="chip" onclick="openCombinedS3()"><span class="dot" style="background:var(--s3)"></span>科目三綜合抽考<span class="cnt">50</span></button>
       </div>
     </section>
 
@@ -810,6 +811,9 @@ function startAll(){
 function combinedS1Pool(){
   return QUESTIONS.filter(q => q.subject === '科目一').map(q => q.id);
 }
+function combinedS3Pool(){
+  return QUESTIONS.filter(q => q.subject === '科目三').map(q => q.id);
+}
 function openCombinedS1(){
   window._cs1Mode = 'practice';
   const pool = combinedS1Pool();
@@ -831,6 +835,28 @@ function pickCombinedS1Mode(mode){
   window._cs1Mode = mode;
   document.getElementById('cs1-practice').classList.toggle('on', mode === 'practice');
   document.getElementById('cs1-exam').classList.toggle('on', mode === 'exam');
+}
+function openCombinedS3(){
+  window._cs3Mode = 'practice';
+  const pool = combinedS3Pool();
+  const html = `
+    <p style="margin:0 0 10px">整合 114-2、115-1、學習指引 三個題庫的科目三題目（共 ${pool.length} 題），隨機抽取 50 題進行測驗。</p>
+    <div class="seg">
+      <button class="on" id="cs3-practice" onclick="pickCombinedS3Mode('practice')">練習模式</button>
+      <button id="cs3-exam" onclick="pickCombinedS3Mode('exam')">模擬測驗（70 分鐘）</button>
+    </div>
+  `;
+  openModal('科目三綜合抽考（隨機 50 題）', html, '開始', () => {
+    closeModal();
+    const ids = shuffle(pool).slice(0, 50);
+    const isExam = window._cs3Mode === 'exam';
+    startSession(ids, '科目三綜合（114+115+指引）· ' + (isExam ? '模擬測驗' : '練習模式'), isExam);
+  });
+}
+function pickCombinedS3Mode(mode){
+  window._cs3Mode = mode;
+  document.getElementById('cs3-practice').classList.toggle('on', mode === 'practice');
+  document.getElementById('cs3-exam').classList.toggle('on', mode === 'exam');
 }
 
 /* ==================== SESSION ==================== */
