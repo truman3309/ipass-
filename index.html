@@ -272,8 +272,8 @@ footer a{color:var(--muted)}
     <div class="row" style="margin-top:16px;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" onclick="closeCloud()">關閉</button>
       <button class="btn btn-ghost btn-sm" id="c-disable" onclick="cloudDisable()" style="display:none">停用同步</button>
-      <button class="btn btn-ghost btn-sm" onclick="cloudTest()">測試連線</button>
-      <button class="btn btn-primary btn-sm" onclick="cloudSave()">儲存並同步</button>
+      <button class="btn btn-ghost btn-sm" id="c-test" onclick="cloudTest()">測試連線</button>
+      <button class="btn btn-primary btn-sm" id="c-save" onclick="cloudSave()">儲存並同步</button>
     </div>
   </div>
 </div>
@@ -396,7 +396,7 @@ function scheduleCloudPush(){
     catch(e){ updateSyncBadge('待同步'); } },1500);
 }
 function reflectCloudBtn(){ const b=document.getElementById('cloud-btn'); if(b)b.classList.toggle('on',Cloud.ready()); }
-function updateSyncBadge(text){ const b=document.getElementById('cloud-btn'); if(b)b.title='雲端同步（MongoDB）'+(Cloud.ready()?'：'+text:''); reflectCloudBtn(); }
+function updateSyncBadge(text){ const b=document.getElementById('cloud-btn'); if(b)b.title='雲端同步（MongoDB）'+(Cloud.ready()?'：已連接 · '+text:'：尚未連接'); reflectCloudBtn(); }
 
 async function loadState(){
   progress=(await Store.get('progress'))||{};
@@ -826,37 +826,73 @@ function toast(msg){
 }
 
 /* ================= 雲端同步 UI ================= */
+let _cloudBusy=false; // 防止「測試連線」「儲存並同步」「停用同步」重複觸發
+
+function setButtonsDisabled(disabled){
+  ['c-test','c-save','c-disable'].forEach(id=>{
+    const b=document.getElementById(id); if(b)b.disabled=disabled;
+  });
+}
+
 function openCloud(){
   document.getElementById('c-base').value=Cloud.cfg.base||'';
   document.getElementById('c-key').value=Cloud.cfg.key||'';
   document.getElementById('c-disable').style.display=Cloud.ready()?'':'none';
-  setCStatus(Cloud.ready()?'目前狀態：已啟用同步':'目前狀態：未啟用');
+  _cloudBusy=false; setButtonsDisabled(false);
+  setCStatus(Cloud.ready()?'已連接 ✓ 目前使用此組同步碼':'目前狀態：尚未連接');
   document.getElementById('cloud-modal').classList.add('show');
 }
 function closeCloud(){ document.getElementById('cloud-modal').classList.remove('show'); }
 function setCStatus(t,ok){ const e=document.getElementById('c-status'); if(!e)return; e.textContent=t; e.className='c-status'+(ok===true?' ok':ok===false?' bad':''); }
+
 async function cloudTest(){
+  if(_cloudBusy){ setCStatus('請稍等，處理中…'); return; }
   const base=document.getElementById('c-base').value.trim(), key=document.getElementById('c-key').value.trim();
   if(!base||!key){ setCStatus('請先填寫 API 網址與同步碼',false); return; }
-  setCStatus('測試中…');
-  try{ const r=await fetch(base.replace(/\/+$/,'')+'/api/progress?key='+encodeURIComponent(key)); if(!r.ok)throw new Error('HTTP '+r.status); await r.json(); setCStatus('連線成功 ✓ 可以按「儲存並同步」',true); }
-  catch(e){ setCStatus('連線失敗：'+e.message+'（請確認 API 已部署、網址正確、且允許跨來源）',false); }
-}
-async function cloudSave(){
-  const base=document.getElementById('c-base').value.trim(), key=document.getElementById('c-key').value.trim();
-  if(!base||!key){ setCStatus('請先填寫 API 網址與同步碼',false); return; }
-  Cloud.cfg={base,key,enabled:true}; Cloud.save(); reflectCloudBtn();
-  setCStatus('同步中…');
+  _cloudBusy=true; setButtonsDisabled(true);
+  const btn=document.getElementById('c-test'); const oldLabel=btn?btn.textContent:'';
+  if(btn)btn.textContent='測試中…';
+  setCStatus('請稍等，正在測試連線…');
   try{
+    const r=await fetch(base.replace(/\/+$/,'')+'/api/progress?key='+encodeURIComponent(key));
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    await r.json();
+    setCStatus('已連接 ✓ 連線成功，可以按「儲存並同步」',true);
+  }catch(e){
+    setCStatus('連接失敗：'+e.message+'（請確認 API 已部署、網址正確、且允許跨來源）',false);
+  }finally{
+    _cloudBusy=false; setButtonsDisabled(false);
+    if(btn)btn.textContent=oldLabel||'測試連線';
+  }
+}
+
+async function cloudSave(){
+  if(_cloudBusy){ setCStatus('請稍等，處理中…'); return; }
+  const base=document.getElementById('c-base').value.trim(), key=document.getElementById('c-key').value.trim();
+  if(!base||!key){ setCStatus('請先填寫 API 網址與同步碼',false); return; }
+  _cloudBusy=true; setButtonsDisabled(true);
+  const btn=document.getElementById('c-save'); const oldLabel=btn?btn.textContent:'';
+  if(btn)btn.textContent='同步中…';
+  setCStatus('請稍等，正在同步…');
+  try{
+    Cloud.cfg={base,key,enabled:true}; Cloud.save(); reflectCloudBtn();
     const remote=await Cloud.pull();
     if(remote){ progress=mergeProgress(progress,remote.progress); starred=mergeStar(starred,remote.starred); saveProgress(); saveStarred(); }
     await Cloud.push({progress,starred,theme});
-    setCStatus('已啟用並同步完成 ✓',true); updateSyncBadge('已同步'); refreshTopStats();
+    setCStatus('已連接 ✓ 同步完成',true); updateSyncBadge('已同步'); refreshTopStats();
     document.getElementById('c-disable').style.display='';
     setTimeout(()=>{ closeCloud(); if(!session)renderHome(); },700);
-  }catch(e){ setCStatus('同步失敗：'+e.message,false); }
+  }catch(e){
+    Cloud.cfg.enabled=false; Cloud.save(); reflectCloudBtn(); // 失敗就不算已連接
+    setCStatus('連接失敗：'+e.message+'（請確認 API 已部署、網址正確、且允許跨來源）',false);
+  }finally{
+    _cloudBusy=false; setButtonsDisabled(false);
+    if(btn)btn.textContent=oldLabel||'儲存並同步';
+  }
 }
+
 function cloudDisable(){
+  if(_cloudBusy){ setCStatus('請稍等，處理中…'); return; }
   Cloud.cfg.enabled=false; Cloud.save(); reflectCloudBtn();
   setCStatus('已停用雲端同步（本機進度仍保留）',true);
   document.getElementById('c-disable').style.display='none';
