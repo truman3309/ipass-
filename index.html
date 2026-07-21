@@ -521,8 +521,8 @@ function renderHome(){
       <div class="chips">
         <button class="chip" onclick="reviewWeak()"><span class="dot" style="background:var(--bad)"></span>弱點複習 <span class="cnt">${weak}</span></button>
         <button class="chip" onclick="reviewStar()"><span class="dot" style="background:var(--hi)"></span>收藏題 <span class="cnt">${star}</span></button>
-        <button class="chip" onclick="startSession({mode:'random',label:'科目一 · 隨機',ids:shuffle(subQs('科目一').map(q=>q.id))})"><span class="dot" style="background:var(--s1)"></span>科目一 <span class="cnt">${subQs('科目一').length}</span></button>
-        <button class="chip" onclick="startSession({mode:'random',label:'科目三 · 隨機',ids:shuffle(subQs('科目三').map(q=>q.id))})"><span class="dot" style="background:var(--s3)"></span>科目三 <span class="cnt">${subQs('科目三').length}</span></button>
+        <button class="chip" onclick="startSession({mode:'random',label:'科目一 · 隨機抽考50題',ids:shuffle(subQs('科目一').map(q=>q.id)).slice(0,50)})"><span class="dot" style="background:var(--s1)"></span>科目一隨機抽考 <span class="cnt">50</span></button>
+        <button class="chip" onclick="startSession({mode:'random',label:'科目三 · 隨機抽考50題',ids:shuffle(subQs('科目三').map(q=>q.id)).slice(0,50)})"><span class="dot" style="background:var(--s3)"></span>科目三隨機抽考 <span class="cnt">50</span></button>
       </div>
     </section>
 
