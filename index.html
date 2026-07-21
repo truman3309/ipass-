@@ -363,6 +363,12 @@ let starred={};    // {qid:true}
 let theme='light';
 
 /* ================= 雲端同步（MongoDB 經由自建 API） ================= */
+function normalizeApiBase(s){
+  s=(s||'').trim().replace(/\/+$/,'');
+  if(!s) return s;
+  if(!/^https?:\/\//i.test(s)) s='https://'+s;   // 忘記打 https:// 時自動補上，避免組成錯誤路徑
+  return s;
+}
 async function buildHttpErrorMessage(r){
   let detail='';
   const ct=(r.headers.get('content-type')||'');
@@ -384,7 +390,7 @@ const Cloud={
   load(){ try{const c=localStorage.getItem('ipas_quiz_cloud'); if(c)this.cfg=Object.assign(this.cfg,JSON.parse(c));}catch(e){} },
   save(){ try{localStorage.setItem('ipas_quiz_cloud',JSON.stringify(this.cfg));}catch(e){} },
   ready(){ return !!(this.cfg.enabled&&this.cfg.base&&this.cfg.key); },
-  url(){ return this.cfg.base.replace(/\/+$/,'')+'/api/progress'; },
+  url(){ return normalizeApiBase(this.cfg.base)+'/api/progress'; },
   async pull(){
     const r=await fetch(this.url()+'?key='+encodeURIComponent(this.cfg.key),{method:'GET'});
     if(!r.ok) throw new Error(await buildHttpErrorMessage(r));
@@ -863,14 +869,15 @@ function setCStatus(t,ok){ const e=document.getElementById('c-status'); if(!e)re
 
 async function cloudTest(){
   if(_cloudBusy){ setCStatus('請稍等，處理中…'); return; }
-  const base=document.getElementById('c-base').value.trim(), key=document.getElementById('c-key').value.trim();
+  const base=normalizeApiBase(document.getElementById('c-base').value), key=document.getElementById('c-key').value.trim();
   if(!base||!key){ setCStatus('請先填寫 API 網址與同步碼',false); return; }
+  document.getElementById('c-base').value=base; // 讓使用者看到已自動補上 https://
   _cloudBusy=true; setButtonsDisabled(true);
   const btn=document.getElementById('c-test'); const oldLabel=btn?btn.textContent:'';
   if(btn)btn.textContent='測試中…';
   setCStatus('請稍等，正在測試連線…');
   try{
-    const r=await fetch(base.replace(/\/+$/,'')+'/api/progress?key='+encodeURIComponent(key));
+    const r=await fetch(base+'/api/progress?key='+encodeURIComponent(key));
     if(!r.ok) throw new Error(await buildHttpErrorMessage(r));
     await r.json();
     setCStatus('已連接 ✓ 連線成功，可以按「儲存並同步」',true);
@@ -884,8 +891,9 @@ async function cloudTest(){
 
 async function cloudSave(){
   if(_cloudBusy){ setCStatus('請稍等，處理中…'); return; }
-  const base=document.getElementById('c-base').value.trim(), key=document.getElementById('c-key').value.trim();
+  const base=normalizeApiBase(document.getElementById('c-base').value), key=document.getElementById('c-key').value.trim();
   if(!base||!key){ setCStatus('請先填寫 API 網址與同步碼',false); return; }
+  document.getElementById('c-base').value=base; // 讓使用者看到已自動補上 https://
   _cloudBusy=true; setButtonsDisabled(true);
   const btn=document.getElementById('c-save'); const oldLabel=btn?btn.textContent:'';
   if(btn)btn.textContent='同步中…';
@@ -963,12 +971,18 @@ document.addEventListener('keydown',e=>{
       : '提醒：目前環境無法保存進度，建議下載本檔到瀏覽器開啟，或用「匯出備份」。';
   }
   if(Cloud.ready()){
-    updateSyncBadge('同步中…');
-    try{ const r=await Cloud.pull();
+    updateSyncBadge('連接中…');
+    try{
+      const r=await Cloud.pull();
       if(r){ progress=mergeProgress(progress,r.progress); starred=mergeStar(starred,r.starred);
         Store.set('progress',progress); Store.set('starred',starred); refreshTopStats(); if(!session)renderHome(); }
-      await Cloud.push({progress,starred,theme}); updateSyncBadge('已同步');
-    }catch(e){ updateSyncBadge('離線'); }
+      await Cloud.push({progress,starred,theme});
+      updateSyncBadge('已連接');
+      toast('☁ 已自動連接雲端同步');
+    }catch(e){
+      updateSyncBadge('離線');
+      toast('☁ 自動連接失敗，可點右上角雲端圖示查看');
+    }
   }
 })();
 </script>
