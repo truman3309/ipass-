@@ -268,7 +268,7 @@ footer a{color:var(--muted)}
     <label>同步碼（自訂；換裝置請填同一組）</label>
     <input id="c-key" class="f" autocomplete="off">
     <div id="c-status" class="c-status"></div>
-    <div class="c-hint">後端需自行部署（Vercel serverless＋MongoDB 驅動）。資料庫連線字串放在後端環境變數，不會出現在此網頁。部署步驟見下載附帶的 <b>mongodb-backend</b> 說明。</div>
+    <div class="c-hint">後端需自行部署（Vercel serverless＋MongoDB 驅動）。資料庫連線字串放在後端環境變數，不會出現在此網頁。部署步驟見下載附帶的 <b>mongodb-backend</b> 說明。<br><span style="opacity:.6">偵錯版本標記：cloud-debug-v3</span></div>
     <div class="row" style="margin-top:16px;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" onclick="closeCloud()">關閉</button>
       <button class="btn btn-ghost btn-sm" id="c-disable" onclick="cloudDisable()" style="display:none">停用同步</button>
@@ -363,6 +363,22 @@ let starred={};    // {qid:true}
 let theme='light';
 
 /* ================= 雲端同步（MongoDB 經由自建 API） ================= */
+async function buildHttpErrorMessage(r){
+  let detail='';
+  const ct=(r.headers.get('content-type')||'');
+  try{
+    if(ct.includes('application/json')){
+      const j=await r.json(); detail=j&&j.error?j.error:JSON.stringify(j);
+    }else{
+      const t=await r.text();
+      detail=t?t.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,140):'';
+    }
+  }catch(e){}
+  const hint = r.status===404 ? '（找不到這個路徑，請確認網址與 /api/progress 是否已部署）'
+             : r.status===500 ? '（伺服器執行時發生錯誤）'
+             : '';
+  return 'HTTP '+r.status+hint+(detail?'：'+detail:'');
+}
 const Cloud={
   cfg:{base:'',key:'',enabled:false},
   load(){ try{const c=localStorage.getItem('ipas_quiz_cloud'); if(c)this.cfg=Object.assign(this.cfg,JSON.parse(c));}catch(e){} },
@@ -371,13 +387,13 @@ const Cloud={
   url(){ return this.cfg.base.replace(/\/+$/,'')+'/api/progress'; },
   async pull(){
     const r=await fetch(this.url()+'?key='+encodeURIComponent(this.cfg.key),{method:'GET'});
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    if(!r.ok) throw new Error(await buildHttpErrorMessage(r));
     const d=await r.json(); return (d&&d.data)?d.data:null;   // {progress,starred,theme}
   },
   async push(payload){
     const r=await fetch(this.url(),{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(Object.assign({key:this.cfg.key},payload))});
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    if(!r.ok) throw new Error(await buildHttpErrorMessage(r));
     return r.json();
   }
 };
@@ -855,7 +871,7 @@ async function cloudTest(){
   setCStatus('請稍等，正在測試連線…');
   try{
     const r=await fetch(base.replace(/\/+$/,'')+'/api/progress?key='+encodeURIComponent(key));
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    if(!r.ok) throw new Error(await buildHttpErrorMessage(r));
     await r.json();
     setCStatus('已連接 ✓ 連線成功，可以按「儲存並同步」',true);
   }catch(e){
