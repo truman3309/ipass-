@@ -489,9 +489,9 @@ function toggleTheme(){theme=theme==='dark'?'light':'dark';applyTheme();Store.se
 /* ================= session ================= */
 let session=null; // {mode,label,ids,idx,answers:{qid:choice},exam,startedAt}
 
-function startSession({mode,label,ids,exam=false,shuffleOpt=false}){
+function startSession({mode,label,ids,exam=false,shuffleOpt=false,reviewOnly=false}){
   if(!ids.length){toast('這個範圍目前沒有題目');return;}
-  session={mode,label,ids,idx:0,answers:{},exam,startedAt:Date.now()};
+  session={mode,label,ids,idx:0,answers:{},exam,reviewOnly,startedAt:Date.now()};
   go('quiz');
 }
 
@@ -501,6 +501,7 @@ function go(view,opts){
   if(view==='home')renderHome();
   else if(view==='quiz')renderQuiz();
   else if(view==='result')renderResult();
+  else if(view==='study')renderStudy();
 }
 
 /* ================= HOME ================= */
@@ -523,6 +524,22 @@ function renderHome(){
         <button class="chip" onclick="reviewStar()"><span class="dot" style="background:var(--hi)"></span>收藏題 <span class="cnt">${star}</span></button>
         <button class="chip" onclick="startSession({mode:'random',label:'科目一 · 隨機抽考50題',ids:shuffle(subQs('科目一').map(q=>q.id)).slice(0,50)})"><span class="dot" style="background:var(--s1)"></span>科目一隨機抽考 <span class="cnt">50</span></button>
         <button class="chip" onclick="startSession({mode:'random',label:'科目三 · 隨機抽考50題',ids:shuffle(subQs('科目三').map(q=>q.id)).slice(0,50)})"><span class="dot" style="background:var(--s3)"></span>科目三隨機抽考 <span class="cnt">50</span></button>
+      </div>
+    </section>
+
+    <section style="padding-top:6px" id="study-section">
+      <div class="sec-head"><h2>弱點與收藏解答</h2><span class="linklike" style="cursor:default">直接看答案與解析，不用重新作答</span></div>
+      <div class="papers">
+        <div class="pcard" onclick="openStudyList('weak')">
+          <span class="tag" style="background:var(--bad-soft);color:var(--bad)">弱點複習</span>
+          <h3>答錯過的題目</h3>
+          <div class="meta">共 ${weak} 題 · 點擊查看題目、正確答案與解析</div>
+        </div>
+        <div class="pcard" onclick="openStudyList('star')">
+          <span class="tag" style="background:var(--hi-soft);color:#8a6a10">收藏題</span>
+          <h3>收藏起來的題目</h3>
+          <div class="meta">共 ${star} 題 · 點擊查看題目、正確答案與解析</div>
+        </div>
       </div>
     </section>
 
@@ -603,12 +620,59 @@ function openAI(sub){
   ]);
 }
 function openExamPicker(){
-  showSeg('模擬測驗','選擇一份試卷，作答完成後交卷計分（每題 2 分，60 分及格）',
+  showSeg('模擬測驗','選擇一份試卷，作答完成後交卷計分（每題 2 分，70 分及格）',
     PAPERS.map(p=>({label:`${p.id} ${p.sub} · ${p.title}`,act:()=>startSession({mode:'exam',label:`${p.id} ${p.sub} 模擬`,ids:paperQs(p.id,p.sub).map(q=>q.id),exam:true})}))
   );
 }
-function reviewWeak(){const ids=weakIds();if(!ids.length){toast('目前沒有弱點題，先去練幾題吧');return;}startSession({mode:'practice',label:'弱點複習',ids:shuffle(ids)});}
-function reviewStar(){const ids=starredIds();if(!ids.length){toast('還沒有收藏題，作答時點右上角星號收藏');return;}startSession({mode:'practice',label:'收藏題',ids});}
+function reviewWeak(){const ids=weakIds();if(!ids.length){toast('目前沒有弱點題，先去練幾題吧');return;}startSession({mode:'practice',label:'弱點複習',ids:shuffle(ids),reviewOnly:true});}
+function reviewStar(){const ids=starredIds();if(!ids.length){toast('還沒有收藏題，作答時點右上角星號收藏');return;}startSession({mode:'practice',label:'收藏題',ids,reviewOnly:true});}
+
+/* ================= 弱點/收藏 解答總覽（純閱讀，不需作答） ================= */
+let studyView=null; // {kind:'weak'|'star', ids:[...]}
+function openStudyList(kind){
+  const ids = kind==='weak' ? weakIds() : starredIds();
+  if(!ids.length){ toast(kind==='weak' ? '目前沒有弱點題，先去練幾題吧' : '還沒有收藏題，作答時點右上角星號收藏'); return; }
+  studyView={kind,ids};
+  session=null; go('study');
+}
+function renderStudy(){
+  const {kind,ids}=studyView;
+  const title = kind==='weak' ? '弱點複習 · 解答總覽' : '收藏題 · 解答總覽';
+  app.innerHTML=`
+  <div class="wrap fade">
+    <div class="qtopbar"><a class="back" onclick="go('home')">← 返回首頁</a><span class="qcount">${ids.length} 題</span></div>
+    <section style="padding-top:10px">
+      <div class="sec-head"><h2>${title}</h2><span class="linklike" style="cursor:default">正確答案已直接標示，並附解析</span></div>
+      <div class="review-list">
+        ${ids.map(id=>{
+          const q=QUESTIONS.find(x=>x.id===id);
+          const c=subColor(q.subject);
+          return `<div class="rev ok" style="cursor:default;border-left-color:${c}">
+            <div class="h">
+              <span class="pill" style="color:${c}">${paperLabel(q.paper)}·${q.subject}${(q.paper==='指引'||q.paper==='AI出題')?'':'·'+q.num}</span>
+              ${kind==='star'?`<button class="star on" style="margin-left:auto;width:26px;height:26px" onclick="event.stopPropagation();unstarInList(${id})" title="取消收藏">★</button>`:''}
+            </div>
+            <div class="q" style="-webkit-line-clamp:initial;display:block;font-size:15px;margin-bottom:8px">${escapeHtml(q.q)}</div>
+            ${q.code?`<div class="qcode">${escapeHtml(q.code)}</div>`:''}
+            <div class="opts" style="margin-top:10px">
+              ${q.opts.map((o,i)=>{
+                const L=LETTERS[i];
+                const cls = L===q.ans ? 'opt correct locked' : 'opt locked dim';
+                return `<div class="${cls}"><span class="key">${L}</span><span class="txt">${escapeHtml(o)}</span></div>`;
+              }).join('')}
+            </div>
+            ${q.note?`<div class="feedback show r-ok" style="margin-top:12px"><div class="ft">✓ 正確答案：${q.ans}</div><div class="note">${escapeHtml(q.note)}</div></div>`
+                     :`<div class="ans" style="margin-top:10px">正確答案 <b class="tag-ok">${q.ans}</b></div>`}
+          </div>`;
+        }).join('')}
+      </div>
+    </section>
+  </div>`;
+}
+function unstarInList(id){ delete starred[id]; saveStarred(); refreshTopStats();
+  studyView.ids = studyView.ids.filter(x=>x!==id);
+  if(!studyView.ids.length){ toast('已無收藏題'); go('home'); } else { renderStudy(); }
+}
 
 /* ================= QUIZ ================= */
 function renderQuiz(){
@@ -630,6 +694,7 @@ function renderQuiz(){
     <div class="qcard">
       <div class="qmeta">
         <span class="pill" style="color:${c}">${paperLabel(q.paper)} · ${q.subject}</span>
+        ${session.reviewOnly?`<span class="pill" style="color:var(--muted)">複習模式 · 不計入正確率</span>`:''}
         <span class="pill">${q.src==='ai'?'AI 出題':q.paper==='指引'?'教材練習':'第 '+q.num+' 題'}</span>
         <button class="star ${starred[q.id]?'on':''}" onclick="toggleStar(${q.id})" title="收藏">★</button>
       </div>
@@ -706,12 +771,14 @@ function choose(L){
   }
   if(session.answers[q.id]!==undefined)return; // 練習模式鎖定
   session.answers[q.id]=L;
-  // 記錄進度
-  const p=progress[q.id]||{seen:0,correct:0,wrong:0,last:null};
-  p.seen++; const correct=L===q.ans;
-  if(correct)p.correct++;else p.wrong++;
-  p.last=correct;
-  progress[q.id]=p; saveProgress(); refreshTopStats();
+  if(!session.reviewOnly){
+    // 記錄進度（弱點複習／收藏題屬於複習性質，不計入正確率統計，見下方 reviewOnly 分支）
+    const p=progress[q.id]||{seen:0,correct:0,wrong:0,last:null};
+    p.seen++; const correct=L===q.ans;
+    if(correct)p.correct++;else p.wrong++;
+    p.last=correct;
+    progress[q.id]=p; saveProgress(); refreshTopStats();
+  }
   renderQuiz();
 }
 function toggleStar(id){ if(starred[id])delete starred[id]; else starred[id]=true; saveStarred();
@@ -761,7 +828,7 @@ function renderResult(){
   const {correct,total}=session.result;
   const pts=Math.round(correct/total*100);   // 100 分制（每份 50 題）
   const pct=Math.round(correct/total*100);
-  const pass=pts>=60;
+  const pass=pts>=70;
   const wrongQ=session.ids.filter(id=>session.answers[id]!==QUESTIONS.find(x=>x.id===id).ans);
   const circ=2*Math.PI*78;
   app.innerHTML=`
